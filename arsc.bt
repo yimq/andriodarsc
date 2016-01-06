@@ -15,6 +15,55 @@ struct  ResChunk_header
     SetBackColor( cRed );
 };
 
+ushort decodeLengthUTF8()
+{
+    local ubyte len1 = ReadUByte(FTell());
+    if ((len1 & 0x80) !=0) 
+    {
+        local ushort len2 = ReadUShort(FTell());
+        FSkip(2);
+        return len2 & 0x7fff;
+    }
+    else
+    {
+        FSkip(1);
+        return len1;
+    }
+};
+
+uint decodeLengthUTF16()
+{
+    local ubyte len1 = ReadUByte(FTell());
+    if ((len1 & 0x80) !=0) 
+    {
+        local uint len2 = ReadUInt(FTell());
+        FSkip(4);
+        return len2 & 0x7fffffff;
+    }
+    else
+    {
+        FSkip(1);
+        return len1;
+    }
+    
+};
+
+struct String8
+{
+    local uint charCount = decodeLengthUTF8();
+    local uint stringSize = decodeLengthUTF8();
+    byte content[stringSize];
+    byte zero;
+};
+
+struct String16
+{
+    local uint charCount = decodeLengthUTF16();
+    local uint stringSize = decodeLengthUTF16();
+    byte content[stringSize];
+    byte zero;
+};
+
 struct ResStringPool
 {   
     local int __begin = FTell();
@@ -24,17 +73,38 @@ struct ResStringPool
     uint styleCount;
     enum uint { SORTED_FLAG = 1<<0, UTF8_FLAG = 1<<8 } flags;
     uint stringStart;
-    uint stylesStart;
+    uint styleStart;
    
-    uint stringIndices[stringCount];
-    struct
-    {
-        byte charCount;
-        byte stringSize;
-        byte content[stringSize];
-        byte zero;
-    } stringConent[stringCount] <optimize=false>;
+    uint stringIndices[stringCount + styleCount];
+    
+    FSeek(stringStart + __begin);
+    local uint i;
+    for (i=0;i<stringCount;i++) 
+    {   
+        FSeek(stringStart + __begin + stringIndices[i]);
+        if ((flags & UTF8_FLAG) != 0)
+        {       
+             String8 stringConent;    
+        }
+        else
+        {
+             String16 stringConent;
+        }
+    }
 
+    FSeek(styleStart + __begin);
+    for (i=0;i<styleCount;i++) 
+    {   
+        FSeek(stringStart + __begin + stringIndices[i + stringCount]);
+        if ((flags & UTF8_FLAG) != 0)
+        {
+             String8 stringConent;    
+        }
+        else
+        {
+             String16 stringConent;
+        }
+    }
     // Sometimes there are some zeros padding after the string chunk
     FSeek(header.size + __begin);
 };
@@ -457,8 +527,7 @@ struct ResTableTypeSpecType
     // SPEC_PUBLIC = 0x40000000
     uint32 flag[entryCount];
     
-
-    byte data[header.size - FTell() + __begin];
+    FSeek(header.size + __begin);
 };
 
 struct ResTableTypeType
@@ -502,7 +571,7 @@ struct ResTableTypeType
         Res_value value;
     };
     Map map[validValueCount];
-    byte data[header.size - FTell() + __begin];
+    FSeek(header.size + __begin);
 };
 
 struct ResTablePackage
@@ -528,6 +597,8 @@ struct ResTablePackage
 
     // Last index into keyStrings that is for public use by others.
     uint32 lastPublicKey;
+
+    FSeek(__begin + typeStrings);
     
     ResStringPool typeStringPool;
     ResStringPool keyStringPool;
@@ -547,16 +618,18 @@ struct ResTablePackage
         }
     }
     
-    byte data[header.size - FTell() + __begin];
+    FSeek(header.size + __begin);
 };
 
 
 struct ResTable
-{
+{   
+    local int __begin = FTell();
     ResChunk_header header;
     uint packageCount;
     ResStringPool resStringPool;
     ResTablePackage resTablePackage[packageCount] <optimize=false>;
+    FSeek(header.size + __begin);
 };
 
 
@@ -564,7 +637,7 @@ struct ResTable
 local short tag;
 LittleEndian(); 
 while( !FEof() )
-{
+{   
     // Read a tag
     tag = ReadShort( FTell() );
     if (tag == 0x0002)
