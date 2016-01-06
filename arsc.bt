@@ -17,12 +17,13 @@ struct  ResChunk_header
 
 ushort decodeLengthUTF8()
 {
-    local ubyte len1 = ReadUByte(FTell());
+    local ushort len1 = ReadUByte(FTell());
     if ((len1 & 0x80) !=0) 
-    {
-        local ushort len2 = ReadUShort(FTell());
-        FSkip(2);
-        return len2 & 0x7fff;
+    {   
+        FSkip(1);
+        local ushort len2 = ReadUByte(FTell());
+        FSkip(1);
+        return ((len1 & 0x7F) << 8) | len2;
     }
     else
     {
@@ -33,16 +34,17 @@ ushort decodeLengthUTF8()
 
 uint decodeLengthUTF16()
 {
-    local ubyte len1 = ReadUByte(FTell());
-    if ((len1 & 0x80) !=0) 
-    {
-        local uint len2 = ReadUInt(FTell());
-        FSkip(4);
-        return len2 & 0x7fffffff;
+    local uint len1 = ReadUShort(FTell());
+    if ((len1 & 0x8000) !=0) 
+    {   
+        FSkip(2);
+        local uint len2 = ReadUShort(FTell());
+        FSkip(2);
+        return ((len1 & 0x7fff) << 16) | len2;
     }
     else
     {
-        FSkip(1);
+        FSkip(2);
         return len1;
     }
     
@@ -59,9 +61,8 @@ struct String8
 struct String16
 {
     local uint charCount = decodeLengthUTF16();
-    local uint stringSize = decodeLengthUTF16();
-    byte content[stringSize];
-    byte zero;
+    ushort content[charCount];
+    ushort zero;
 };
 
 struct ResStringPool
@@ -81,7 +82,7 @@ struct ResStringPool
     local uint i;
     for (i=0;i<stringCount;i++) 
     {   
-        FSeek(stringStart + __begin + stringIndices[i]);
+        FSeek(__begin + stringStart + stringIndices[i]);
         if ((flags & UTF8_FLAG) != 0)
         {       
              String8 stringConent;    
@@ -95,7 +96,7 @@ struct ResStringPool
     FSeek(styleStart + __begin);
     for (i=0;i<styleCount;i++) 
     {   
-        FSeek(stringStart + __begin + stringIndices[i + stringCount]);
+        FSeek(__begin + stringStart + stringIndices[i + stringCount]);
         if ((flags & UTF8_FLAG) != 0)
         {
              String8 stringConent;    
